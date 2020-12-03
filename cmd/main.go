@@ -1,13 +1,17 @@
 package main
 
 import (
+	"time"
+	"net"
+	"context"
+	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/Shahlojon/crud/cmd/app"
 	"github.com/Shahlojon/crud/pkg/customers"
 	"net/http"
-	"database/sql"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"log"
 	"os"
+	"go.uber.org/dig"
 )
 
 func main() {
@@ -21,21 +25,38 @@ func main() {
 }
 
 func execute(host, port, dbConnectionString string) (err error){
-	db, err := sql.Open("pgx", dbConnectionString)
-	if err !=nil{
+	deps := []interface{}{
+		app.NewServer,
+		http.NewServeMux,
+		func() (*pgxpool.Pool, error) {
+			ctx,_:=context.WithTimeout(context.Background(), time.Second*5)
+			return pgxpool.Connect(ctx, dbConnectionString)
+		},
+		customers.NewService,
+		func (server *app.Server) *http.Server{
+			return &http.Server{
+				Addr: net.JoinHostPort(host, port),
+				Handler: server,
+			}
+		},
+	}
+
+	container:=dig.New()
+	for _,dep:=range deps{
+		err = container.Provide(dep)
+		if err!=nil {
+			return err
+		}
+	}
+	err = container.Invoke(func(server *app.Server) {
+		server.Init()
+	})
+
+	if err!=nil {
 		return err
 	}
-	defer db.Close()
 
-	mux := http.NewServeMux()
-	customerService := customers.NewService(db)
-	server := app.NewServer(mux, customerService)
-	server.Init()
-
-	httpServer := &http.Server{
-		Addr:host+":"+port,
-		Handler: server,
-	}
-
-	return httpServer.ListenAndServe()
+	return container.Invoke(func(server *http.Server) error {
+		return server.ListenAndServe()
+	})
 }
