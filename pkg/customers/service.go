@@ -97,9 +97,9 @@ func (s *Service) AllActive(ctx context.Context) (cs []*Customer, err error) {
 func (s *Service) ByID(ctx context.Context, id int64) (*Customer, error) {
 	item := &Customer{}
 
-	sqlStatement := `select * from customers`
+	sqlStatement := `select * from customers where id=$1`
 
-	err := s.db.QueryRow(ctx, sqlStatement).Scan(&item.ID,
+	err := s.db.QueryRow(ctx, sqlStatement,id).Scan(&item.ID,
 		&item.Name,
 		&item.Phone,
 		&item.Active,
@@ -115,7 +115,6 @@ func (s *Service) ByID(ctx context.Context, id int64) (*Customer, error) {
 		}
 
 		return item, nil
-
 }
 
 //ChangeActive ...
