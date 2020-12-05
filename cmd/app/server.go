@@ -34,7 +34,6 @@ const (
 
 //Init ...
 func (s *Server) Init() {
-    //s.mux.HandleFunc("/customers.getAll", s.handleGetAllCustomers)
 	s.mux.HandleFunc("/customers", s.handleGetAllCustomers).Methods(GET)
 	s.mux.HandleFunc("/customers", s.handleSave).Methods(POST)
 	s.mux.HandleFunc("/customers/active", s.handleGetAllActiveCustomers).Methods(GET)
