@@ -1,6 +1,8 @@
 package app
 
 import (
+	"github.com/Shahlojon/crud/cmd/app/middleware"
+	"github.com/Shahlojon/crud/pkg/customers/security"
 	"github.com/gorilla/mux"
 	"github.com/Shahlojon/crud/pkg/customers"
 	"encoding/json"
@@ -15,11 +17,12 @@ import (
 type Server struct {
 	mux         *mux.Router
 	customerSvc *customers.Service
+	securitySvc *security.Service
 }
 
 //NewServer ...
-func NewServer(m *mux.Router, cSvc *customers.Service) *Server {
-	return &Server{mux: m, customerSvc: cSvc}
+func NewServer(m *mux.Router, cSvc *customers.Service, sSvc *security.Service) *Server {
+	return &Server{mux: m, customerSvc: cSvc, securitySvc:sSvc,}
 }
 
 func (s *Server)ServeHTTP(w http.ResponseWriter, r *http.Request){
@@ -44,6 +47,9 @@ func (s *Server) Init() {
 	//s.mux.HandleFunc("/customers.removeById", s.handleDelete)
 	s.mux.HandleFunc("/customers/{id}", s.handleDelete).Methods(DELETE)
 	//s.mux.HandleFunc("/customers.save", s.handleSave)
+
+	s.mux.Use(middleware.Basic(s.securitySvc.Auth))
+
 }
 
 // хендлер метод для извлечения всех клиентов
@@ -278,15 +284,6 @@ func (s *Server) handleSave(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, customer)
 }
 
-/*
-+
-+
-+
-+
-+
-+
-+
-*/
 //это фукция для записывание ошибки в responseWriter или просто для ответа с ошиками
 func errorWriter(w http.ResponseWriter, httpSts int, err error) {
 	//печатаем ошибку
@@ -294,11 +291,7 @@ func errorWriter(w http.ResponseWriter, httpSts int, err error) {
 	http.Error(w, http.StatusText(httpSts), httpSts)
 }
 
-/*
-+
-+
-+
-*/
+
 //это функция для ответа в формате JSON
 func respondJSON(w http.ResponseWriter, iData interface{}) {
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Shahlojon/crud/pkg/customers/security"
 	"github.com/gorilla/mux"
 	"time"
 	"net"
@@ -34,6 +35,7 @@ func execute(host, port, dbConnectionString string) (err error){
 			return pgxpool.Connect(ctx, dbConnectionString)
 		},
 		customers.NewService,
+		security.NewService,
 		func (server *app.Server) *http.Server{
 			return &http.Server{
 				Addr: net.JoinHostPort(host, port),
