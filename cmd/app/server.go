@@ -333,14 +333,17 @@ func (s *Server) handleValidateToken(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		status := http.StatusInternalServerError
+		text:="internal error"
 		if err == security.ErrNoSuchUser {
 			status = http.StatusNotFound
+			text="not found"
 		}
 		if err == security.ErrExpireToken {
 			status = http.StatusBadRequest
+			text="expired"
 		}
 
-		respondJSONWithCode(w, status, map[string]interface{}{"status": "fail", "reason": fmt.Sprintf("%v", err)})
+		respondJSONWithCode(w, status, map[string]interface{}{"status": "fail", "reason": text})
 		return
 	}
 

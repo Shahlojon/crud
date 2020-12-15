@@ -96,7 +96,7 @@ func (s *Service) TokenForCustomer(ctx context.Context, phone, password string)(
 	if err == pgx.ErrNoRows{
 		return "", ErrNoSuchUser
 	}
-	if err != nil{
+	if err != nil{ 
 		return "", ErrInternal
 	}
 	err = bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
