@@ -226,55 +226,18 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 
+//хендлер для сохранения и обновления
 func (s *Server) handleSave(w http.ResponseWriter, r *http.Request) {
 
-	// //получаем данные из параметра запроса
-	// idP := r.FormValue("id")
-	// name := r.FormValue("name")
-	// phone := r.FormValue("phone")
-
-	// id, err := strconv.ParseInt(idP, 10, 64)
-	// //если получили ошибку то отвечаем с ошибкой
-	// if err != nil {
-	// 	//вызываем фукцию для ответа с ошибкой
-	// 	errorWriter(w, http.StatusBadRequest, err)
-	// 	return
-	// }
-	// //Здесь опционалная проверка то что если все данные приходит пустыми то вернем ошибку
-	// if name == "" && phone == ""  {
-	// 	//вызываем фукцию для ответа с ошибкой
-	// 	errorWriter(w, http.StatusBadRequest, err)
-	// 	return
-	// }
-
-	// item := &customers.Customer{
-	// 	ID:id,
-	// 	Name:name,
-	// 	Phone:phone,
-	// 	/* Active:true,
-	// 	Created:time.Now() */
-	// }
-
-	// customer, err := s.customerSvc.Save(r.Context(), item)
-
-	// //если получили ошибку то отвечаем с ошибкой
-	// if err != nil {
-	// 	//вызываем фукцию для ответа с ошибкой
-	// 	errorWriter(w, http.StatusInternalServerError, err)
-	// 	return
-	// }
-	// //вызываем функцию для ответа в формате JSON
-	// respondJSON(w, customer)
 	var item *customers.Customer
+
 	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
-		//вызываем фукцию для ответа с ошибкой
 		errorWriter(w, http.StatusBadRequest, err)
 		return
 	}
 
 	hashed, err := bcrypt.GenerateFromPassword([]byte(item.Password), bcrypt.DefaultCost)
 	if err != nil {
-		//вызываем фукцию для ответа с ошибкой
 		errorWriter(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -282,13 +245,10 @@ func (s *Server) handleSave(w http.ResponseWriter, r *http.Request) {
 
 	customer, err := s.customerSvc.Save(r.Context(), item)
 
-	//если получили ошибку то отвечаем с ошибкой
 	if err != nil {
-		//вызываем фукцию для ответа с ошибкой
 		errorWriter(w, http.StatusInternalServerError, err)
 		return
 	}
-	//вызываем функцию для ответа в формате JSON
 	respondJSON(w, customer)
 }
 
@@ -319,37 +279,37 @@ func (s *Server) handleCreateToken(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleValidateToken(w http.ResponseWriter, r *http.Request) {
 	var item *struct {
-		Token string `json:"token"`
+	  Token string `json:"token"`
 	}
-
+  
 	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
-		//вызываем фукцию для ответа с ошибкой
-		errorWriter(w, http.StatusBadRequest, err)
-		return
+	  //вызываем фукцию для ответа с ошибкой
+	  errorWriter(w, http.StatusBadRequest, err)
+	  return
 	}
-
+  
 	id, err := s.securitySvc.AuthenticateCustomer(r.Context(), item.Token)
-
+  
 	if err != nil {
-		status := http.StatusInternalServerError
-		text:="internal error"
-		if err == security.ErrNoSuchUser {
-			status = http.StatusNotFound
-			text="not found"
-		}
-		if err == security.ErrExpireToken {
-			status = http.StatusBadRequest
-			text="expired"
-		}
-
-		respondJSONWithCode(w, status, map[string]interface{}{"status": "fail", "reason": text})
-		return
+	  status := http.StatusInternalServerError
+	  text  := "internal error"
+	  if err == security.ErrNoSuchUser {
+		status = http.StatusNotFound
+		text="not found"
+	  }
+	  if err == security.ErrExpireToken {
+		status = http.StatusBadRequest
+		text="expired"
+	  }
+  
+	  respondJSONWithCode(w, status, map[string]interface{}{"status": "fail", "reason": text})
+	  return
 	}
-
+  
 	res := make(map[string]interface{})
 	res["status"] = "ok"
 	res["customerId"] = id
-
+  
 	respondJSONWithCode(w, http.StatusOK, res)
 }
 
