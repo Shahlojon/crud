@@ -1,7 +1,9 @@
 package app
 
 import (
-	"github.com/Shahlojon/crud/cmd/app/middleware"
+	"fmt"
+	"golang.org/x/crypto/bcrypt"
+	//"github.com/Shahlojon/crud/cmd/app/middleware"
 	"github.com/Shahlojon/crud/pkg/customers/security"
 	"github.com/gorilla/mux"
 	"github.com/Shahlojon/crud/pkg/customers"
@@ -47,8 +49,10 @@ func (s *Server) Init() {
 	//s.mux.HandleFunc("/customers.removeById", s.handleDelete)
 	s.mux.HandleFunc("/customers/{id}", s.handleDelete).Methods(DELETE)
 	//s.mux.HandleFunc("/customers.save", s.handleSave)
+	s.mux.HandleFunc("/api/customers/token", s.handleCreateToken).Methods("POST")
+	s.mux.HandleFunc("/api/customers/token/validate", s.handleValidateToken).Methods("POST")
 
-	s.mux.Use(middleware.Basic(s.securitySvc.Auth))
+	//s.mux.Use(middleware.Basic(s.securitySvc.Auth))
 
 }
 
@@ -263,14 +267,19 @@ func (s *Server) handleSave(w http.ResponseWriter, r *http.Request) {
 	// //вызываем функцию для ответа в формате JSON
 	// respondJSON(w, customer)
 	var item *customers.Customer
-	err:=json.NewDecoder(r.Body).Decode(&item)
-	if err!=nil {
-		log.Print(err)
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
+		//вызываем фукцию для ответа с ошибкой
+		errorWriter(w, http.StatusBadRequest, err)
 		return
 	}
 
-	item, err = s.customerSvc.Save(r.Context(), item)
+	hashed, err := bcrypt.GenerateFromPassword([]byte(item.Password), bcrypt.DefaultCost)
+	if err != nil {
+		//вызываем фукцию для ответа с ошибкой
+		errorWriter(w, http.StatusInternalServerError, err)
+		return
+	}
+	item.Password = string(hashed)
 
 	customer, err := s.customerSvc.Save(r.Context(), item)
 
@@ -282,6 +291,64 @@ func (s *Server) handleSave(w http.ResponseWriter, r *http.Request) {
 	}
 	//вызываем функцию для ответа в формате JSON
 	respondJSON(w, customer)
+}
+
+func (s *Server) handleCreateToken(w http.ResponseWriter, r *http.Request) {
+
+	var item *struct {
+		Login    string `json:"login"`
+		Password string `json:"password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
+		//вызываем фукцию для ответа с ошибкой
+		errorWriter(w, http.StatusBadRequest, err)
+		return
+	}
+
+	token, err := s.securitySvc.TokenForCustomer(r.Context(), item.Login, item.Password)
+
+	if err != nil {
+		//вызываем фукцию для ответа с ошибкой
+		errorWriter(w, http.StatusBadRequest, err)
+		return
+	}
+
+	//вызываем функцию для ответа в формате JSON
+	respondJSON(w, map[string]interface{}{"status": "ok", "token": token})
+}
+
+func (s *Server) handleValidateToken(w http.ResponseWriter, r *http.Request) {
+	var item *struct {
+		Token string `json:"token"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
+		//вызываем фукцию для ответа с ошибкой
+		errorWriter(w, http.StatusBadRequest, err)
+		return
+	}
+
+	id, err := s.securitySvc.AuthenticateCustomer(r.Context(), item.Token)
+
+	if err != nil {
+		status := http.StatusInternalServerError
+		if err == security.ErrNoSuchUser {
+			status = http.StatusNotFound
+		}
+		if err == security.ErrExpireToken {
+			status = http.StatusBadRequest
+		}
+
+		respondJSONWithCode(w, status, map[string]interface{}{"status": "fail", "reason": fmt.Sprintf("%v", err)})
+		return
+	}
+
+	res := make(map[string]interface{})
+	res["status"] = "ok"
+	res["customerId"] = id
+
+	respondJSONWithCode(w, http.StatusOK, res)
 }
 
 //это фукция для записывание ошибки в responseWriter или просто для ответа с ошиками
@@ -307,6 +374,30 @@ func respondJSON(w http.ResponseWriter, iData interface{}) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_, err = w.Write(data)
+	if err != nil {
+		//печатаем ошибку
+		log.Print(err)
+	}
+}
+
+//это функция для ответа в формате JSON (он принимает интерфейс по этому мы можем в нем передат все что захочется)
+func respondJSONWithCode(w http.ResponseWriter, sts int, iData interface{}) {
+
+	//преобразуем данные в JSON
+	data, err := json.Marshal(iData)
+
+	//если получили ошибку то отвечаем с ошибкой
+	if err != nil {
+		//вызываем фукцию для ответа с ошибкой
+		errorWriter(w, http.StatusInternalServerError, err)
+		return
+	}
+	w.WriteHeader(sts)
+	//поставить хедер "Content-Type: application/json" в ответе
+	w.Header().Set("Content-Type", "application/json")
+	//пишем ответ
+	_, err = w.Write(data)
+	//если получили ошибку
 	if err != nil {
 		//печатаем ошибку
 		log.Print(err)

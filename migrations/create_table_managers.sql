@@ -1,3 +1,19 @@
+CREATE TABLE customers(
+    id BIGSERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    phone TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE customer_tokens(
+    token TEXT NOT NULL UNIQUE,
+    customer_id BIGINT NOT NULL REFERENCES customers,
+    expire TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP+INTERVAL '1 hour',
+    created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+
 create table managers (
     id bigserial primary key,
     name text not null,

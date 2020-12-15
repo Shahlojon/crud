@@ -36,8 +36,7 @@ func Basic(checkAuth func(string, string)bool) func(handler http.Handler)http.Ha
 }
 
 // это функция который извелекаеть данные из запроса и вернет логин и парол и ошибку если есть ошибка
-func getLoginPass(r *http.Request) (string, string, error){
-		
+func getLoginPass(r *http.Request) (string, string, error){		
 		//здес мы берем из хедера заначению Authorization потом разделим его на две части
         auth := strings.SplitN(r.Header.Get("Authorization"), " ", 2)
 		//здесь проверим точно там через пробел два значения и первы из них должен быть слова Basic
