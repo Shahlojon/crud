@@ -1,17 +1,16 @@
 package app
 
 import (
-	"golang.org/x/crypto/bcrypt"
-	//"github.com/Shahlojon/crud/cmd/app/middleware"
-	"github.com/Shahlojon/crud/pkg/customers/security"
-	"github.com/gorilla/mux"
-	"github.com/Shahlojon/crud/pkg/customers"
 	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 	"strconv"
 
+	"github.com/Shahlojon/crud/pkg/customers"
+	"github.com/Shahlojon/crud/pkg/security"
+	"github.com/gorilla/mux"
+	"golang.org/x/crypto/bcrypt"
 )
 
 //Server ...
@@ -21,73 +20,90 @@ type Server struct {
 	securitySvc *security.Service
 }
 
-//NewServer ...
+//NewServer ... создает новый сервер
 func NewServer(m *mux.Router, cSvc *customers.Service, sSvc *security.Service) *Server {
-	return &Server{mux: m, customerSvc: cSvc, securitySvc:sSvc,}
+	return &Server{
+		mux:         m,
+		customerSvc: cSvc,
+		securitySvc: sSvc,
+	}
 }
 
-func (s *Server)ServeHTTP(w http.ResponseWriter, r *http.Request){
-	s.mux.ServeHTTP(w,r)
+// функция для запуска хендлеров через мукс
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.mux.ServeHTTP(w, r)
 }
 
-const (
-	GET = "GET"
-	POST = "POST"
-	DELETE = "DELETE"
-)
-
-//Init ...
+//Init ... инициализация сервера
 func (s *Server) Init() {
-	s.mux.HandleFunc("/customers", s.handleGetAllCustomers).Methods(GET)
-	s.mux.HandleFunc("/customers", s.handleSave).Methods(POST)
-	s.mux.HandleFunc("/customers/active", s.handleGetAllActiveCustomers).Methods(GET)
 	//s.mux.HandleFunc("/customers.getById", s.handleGetCustomerByID)
-	s.mux.HandleFunc("/customers/{id}", s.handleGetCustomerByID).Methods(GET)
-	s.mux.HandleFunc("/customers/{id}/block", s.handleBlockByID).Methods(POST)
-	s.mux.HandleFunc("/customers/{id}/block", s.handleUnBlockByID).Methods(DELETE)
-	//s.mux.HandleFunc("/customers.removeById", s.handleDelete)
-	s.mux.HandleFunc("/customers/{id}", s.handleDelete).Methods(DELETE)
-	//s.mux.HandleFunc("/customers.save", s.handleSave)
+
+	s.mux.HandleFunc("/customers", s.handleGetAllCustomers).Methods("GET")
+	s.mux.HandleFunc("/customers/active", s.handleGetAllActiveCustomers).Methods("GET")
+
+	s.mux.HandleFunc("/customers/{id}", s.handleGetCustomerByID).Methods("GET")
+	s.mux.HandleFunc("/customers/{id}/block", s.handleBlockByID).Methods("POST")
+	s.mux.HandleFunc("/customers/{id}/block", s.handleUnBlockByID).Methods("DELETE")
+	s.mux.HandleFunc("/customers/{id}", s.handleDelete).Methods("DELETE")
+
+	s.mux.HandleFunc("/api/customers", s.handleSave).Methods("POST")
 	s.mux.HandleFunc("/api/customers/token", s.handleCreateToken).Methods("POST")
 	s.mux.HandleFunc("/api/customers/token/validate", s.handleValidateToken).Methods("POST")
 
+	// как показона в лекции оборачиваем все роуты с мидлварем Basic из пакета middleware
 	//s.mux.Use(middleware.Basic(s.securitySvc.Auth))
 
+	/*
+		http://127.0.0.1:9999/customers.save?id=0&name=Najibullo&phone=992931441244
+		http://127.0.0.1:9999/customers.getById?id=1
+		http://127.0.0.1:9999/customers.getAll
+		http://127.0.0.1:9999/customers.getAllActive
+		http://127.0.0.1:9999/customers.blockById?id=1
+		http://127.0.0.1:9999/customers.unblockById?id=1
+		http://127.0.0.1:9999/customers.removeById?id=1
+
+	*/
 }
 
 // хендлер метод для извлечения всех клиентов
 func (s *Server) handleGetAllCustomers(w http.ResponseWriter, r *http.Request) {
 
-	items, err :=s.customerSvc.All(r.Context())
-	if err != nil{
+	//берем все клиенты
+	items, err := s.customerSvc.All(r.Context())
+
+	//если ест ошибка
+	if err != nil {
 		//вызываем фукцию для ответа с ошибкой
 		errorWriter(w, http.StatusInternalServerError, err)
 		return
 	}
+
+	//передаем в функции respondJSON, ResponseWriter и данные (он отвечает клиенту)
 	respondJSON(w, items)
 }
 
 // хендлер метод для извлечения всех активных клиентов
 func (s *Server) handleGetAllActiveCustomers(w http.ResponseWriter, r *http.Request) {
 
-	items, err :=s.customerSvc.AllActive(r.Context())
-	if err != nil{
+	//берем все активные клиенты
+	items, err := s.customerSvc.AllActive(r.Context())
+
+	//если ест ошибка
+	if err != nil {
 		//вызываем фукцию для ответа с ошибкой
 		errorWriter(w, http.StatusInternalServerError, err)
 		return
 	}
-	
 
+	//передаем в функции respondJSON, ResponseWriter и данные (он отвечает клиенту)
 	respondJSON(w, items)
 }
 
+//хендлер который верет по айди
 func (s *Server) handleGetCustomerByID(w http.ResponseWriter, r *http.Request) {
 	//получаем ID из параметра запроса
-	idP, ok := mux.Vars(r)["id"]
-	if !ok{
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
+	//idP := r.URL.Query().Get("id")
+	idP := mux.Vars(r)["id"]
 
 	// переобразуем его в число
 	id, err := strconv.ParseInt(idP, 10, 64)
@@ -101,6 +117,7 @@ func (s *Server) handleGetCustomerByID(w http.ResponseWriter, r *http.Request) {
 	//получаем баннер из сервиса
 	item, err := s.customerSvc.ByID(r.Context(), id)
 
+	//если ошибка равно на notFound то вернем ошибку не найдено
 	if errors.Is(err, customers.ErrNotFound) {
 		//вызываем фукцию для ответа с ошибкой
 		errorWriter(w, http.StatusNotFound, err)
@@ -113,17 +130,15 @@ func (s *Server) handleGetCustomerByID(w http.ResponseWriter, r *http.Request) {
 		errorWriter(w, http.StatusInternalServerError, err)
 		return
 	}
-	//вызываем функцию для ответа в формате JSON
+	//передаем в функции respondJSON, ResponseWriter и данные (он отвечает клиенту)
 	respondJSON(w, item)
 }
 
+//хендлер для блокировки
 func (s *Server) handleBlockByID(w http.ResponseWriter, r *http.Request) {
 	//получаем ID из параметра запроса
-	idP, ok := mux.Vars(r)["id"]
-	if !ok{
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
+	//idP := r.URL.Query().Get("id")
+	idP := mux.Vars(r)["id"]
 
 	// переобразуем его в число
 	id, err := strconv.ParseInt(idP, 10, 64)
@@ -134,9 +149,9 @@ func (s *Server) handleBlockByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//получаем баннер из сервиса
+	//изменяем статус клиента на фалсе
 	item, err := s.customerSvc.ChangeActive(r.Context(), id, false)
-
+	//если ошибка равно на notFound то вернем ошибку не найдено
 	if errors.Is(err, customers.ErrNotFound) {
 		//вызываем фукцию для ответа с ошибкой
 		errorWriter(w, http.StatusNotFound, err)
@@ -149,17 +164,15 @@ func (s *Server) handleBlockByID(w http.ResponseWriter, r *http.Request) {
 		errorWriter(w, http.StatusInternalServerError, err)
 		return
 	}
-	//вызываем функцию для ответа в формате JSON
+	//передаем в функции respondJSON, ResponseWriter и данные (он отвечает клиенту)
 	respondJSON(w, item)
 }
 
+//хенндлер для разблокировки
 func (s *Server) handleUnBlockByID(w http.ResponseWriter, r *http.Request) {
 	//получаем ID из параметра запроса
-	idP, ok := mux.Vars(r)["id"]
-	if !ok{
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
+	//idP := r.URL.Query().Get("id")
+	idP := mux.Vars(r)["id"]
 
 	// переобразуем его в число
 	id, err := strconv.ParseInt(idP, 10, 64)
@@ -172,7 +185,7 @@ func (s *Server) handleUnBlockByID(w http.ResponseWriter, r *http.Request) {
 
 	//получаем баннер из сервиса
 	item, err := s.customerSvc.ChangeActive(r.Context(), id, true)
-
+	//если ошибка равно на notFound то вернем ошибку не найдено
 	if errors.Is(err, customers.ErrNotFound) {
 		//вызываем фукцию для ответа с ошибкой
 		errorWriter(w, http.StatusNotFound, err)
@@ -186,16 +199,14 @@ func (s *Server) handleUnBlockByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	//вызываем функцию для ответа в формате JSON
+	//передаем в функции respondJSON, ResponseWriter и данные (он отвечает клиенту)
 	respondJSON(w, item)
 }
 
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 	//получаем ID из параметра запроса
-	idP, ok := mux.Vars(r)["id"]
-	if !ok{
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		return
-	}
+	//idP := r.URL.Query().Get("id")
+	idP := mux.Vars(r)["id"]
 
 	// переобразуем его в число
 	id, err := strconv.ParseInt(idP, 10, 64)
@@ -206,9 +217,9 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//получаем баннер из сервиса
+	//удаляем клиента из базу
 	item, err := s.customerSvc.Delete(r.Context(), id)
-
+	//если ошибка равно на notFound то вернем ошибку не найдено
 	if errors.Is(err, customers.ErrNotFound) {
 		//вызываем фукцию для ответа с ошибкой
 		errorWriter(w, http.StatusNotFound, err)
@@ -222,42 +233,15 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	//вызываем функцию для ответа в формате JSON
+	//передаем в функции respondJSON, ResponseWriter и данные (он отвечает клиенту)
 	respondJSON(w, item)
 }
-
 
 //хендлер для сохранения и обновления
 func (s *Server) handleSave(w http.ResponseWriter, r *http.Request) {
 
+	//обявляем структура клиента для запраса
 	var item *customers.Customer
-
-	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
-		errorWriter(w, http.StatusBadRequest, err)
-		return
-	}
-
-	hashed, err := bcrypt.GenerateFromPassword([]byte(item.Password), bcrypt.DefaultCost)
-	if err != nil {
-		errorWriter(w, http.StatusInternalServerError, err)
-		return
-	}
-	item.Password = string(hashed)
-
-	customer, err := s.customerSvc.Save(r.Context(), item)
-
-	if err != nil {
-		errorWriter(w, http.StatusInternalServerError, err)
-		return
-	}
-	respondJSON(w, customer)
-}
-
-func (s *Server) handleCreateToken(w http.ResponseWriter, r *http.Request) {
-
-	var item *struct {
-		Login    string `json:"login"`
-		Password string `json:"password"`
-	}
 
 	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
 		//вызываем фукцию для ответа с ошибкой
@@ -265,6 +249,43 @@ func (s *Server) handleCreateToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	//Генерируем bcrypt хеш от реалного пароля
+	hashed, err := bcrypt.GenerateFromPassword([]byte(item.Password), bcrypt.DefaultCost)
+	if err != nil {
+		//вызываем фукцию для ответа с ошибкой
+		errorWriter(w, http.StatusInternalServerError, err)
+		return
+	}
+	//и поставляем хеш в поле парол
+	item.Password = string(hashed)
+
+	//сохроняем или обновляем клиент
+	customer, err := s.customerSvc.Save(r.Context(), item)
+
+	//если получили ошибку то отвечаем с ошибкой
+	if err != nil {
+		//вызываем фукцию для ответа с ошибкой
+		errorWriter(w, http.StatusInternalServerError, err)
+		return
+	}
+	//вызываем функцию для ответа в формате JSON
+	respondJSON(w, customer)
+}
+
+func (s *Server) handleCreateToken(w http.ResponseWriter, r *http.Request) {
+
+	//обявляем структуру для запроса
+	var item *struct {
+		Login    string `json:"login"`
+		Password string `json:"password"`
+	}
+	//извелекаем данные из запраса
+	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
+		//вызываем фукцию для ответа с ошибкой
+		errorWriter(w, http.StatusBadRequest, err)
+		return
+	}
+	//взываем из сервиса  securitySvc метод AuthenticateCustomer
 	token, err := s.securitySvc.TokenForCustomer(r.Context(), item.Login, item.Password)
 
 	if err != nil {
@@ -277,51 +298,74 @@ func (s *Server) handleCreateToken(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, map[string]interface{}{"status": "ok", "token": token})
 }
 
+//хендлер для валидации
 func (s *Server) handleValidateToken(w http.ResponseWriter, r *http.Request) {
+	//создаем структуру для извлечения запроса
 	var item *struct {
-	  Token string `json:"token"`
+		Token string `json:"token"`
 	}
-  
+	//из json извелекаем нужные данные
 	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
-	  //вызываем фукцию для ответа с ошибкой
-	  errorWriter(w, http.StatusBadRequest, err)
-	  return
+		//вызываем фукцию для ответа с ошибкой
+		errorWriter(w, http.StatusBadRequest, err)
+		return
 	}
-  
+
+	//взываем из сервиса  securitySvc метод AuthenticateCustomer
 	id, err := s.securitySvc.AuthenticateCustomer(r.Context(), item.Token)
-  
+
+	//если получили ошибу
 	if err != nil {
-	  status := http.StatusInternalServerError
-	  text  := "internal error"
-	  if err == security.ErrNoSuchUser {
-		status = http.StatusNotFound
-		text="not found"
-	  }
-	  if err == security.ErrExpireToken {
-		status = http.StatusBadRequest
-		text="expired"
-	  }
-  
-	  respondJSONWithCode(w, status, map[string]interface{}{"status": "fail", "reason": text})
-	  return
+		//то генурируем интернал еррор
+		status := http.StatusInternalServerError
+		text := "internal error"
+		//если ошибка ErrNoSuchUser то изменим ответ на не найдено
+		if err == security.ErrNoSuchUser {
+			status = http.StatusNotFound
+			text = "not found"
+		}
+		//если ошибка ErrExpireToken то изменим ответ на не expired
+		if err == security.ErrExpireToken {
+			status = http.StatusBadRequest
+			text = "expired"
+		}
+		//отвечаем с кодом статуса
+		respondJSONWithCode(w, status, map[string]interface{}{"status": "fail", "reason": text})
+		return
 	}
-  
+
+	//генерируем структуру ответа
 	res := make(map[string]interface{})
 	res["status"] = "ok"
 	res["customerId"] = id
-  
+
+	//отвечаем с кодом статуса
 	respondJSONWithCode(w, http.StatusOK, res)
 }
 
+/*
++
++
++
++
++
++
++
+*/
 //это фукция для записывание ошибки в responseWriter или просто для ответа с ошиками
 func errorWriter(w http.ResponseWriter, httpSts int, err error) {
 	//печатаем ошибку
 	log.Print(err)
+	//отвечаем ошибку с помошю библиотеке net/http
 	http.Error(w, http.StatusText(httpSts), httpSts)
 }
 
-
-//это функция для ответа в формате JSON
+/*
++
++
++
+*/
+//это функция для ответа в формате JSON (он принимает интерфейс по этому мы можем в нем передат все что захочется)
 func respondJSON(w http.ResponseWriter, iData interface{}) {
 
 	//преобразуем данные в JSON
@@ -333,9 +377,11 @@ func respondJSON(w http.ResponseWriter, iData interface{}) {
 		errorWriter(w, http.StatusInternalServerError, err)
 		return
 	}
-
+	//поставить хедер "Content-Type: application/json" в ответе
 	w.Header().Set("Content-Type", "application/json")
+	//пишем ответ
 	_, err = w.Write(data)
+	//если получили ошибку
 	if err != nil {
 		//печатаем ошибку
 		log.Print(err)
@@ -354,9 +400,13 @@ func respondJSONWithCode(w http.ResponseWriter, sts int, iData interface{}) {
 		errorWriter(w, http.StatusInternalServerError, err)
 		return
 	}
-	w.WriteHeader(sts)
+
 	//поставить хедер "Content-Type: application/json" в ответе
 	w.Header().Set("Content-Type", "application/json")
+
+	//пишем статус в хедер
+	w.WriteHeader(sts)
+
 	//пишем ответ
 	_, err = w.Write(data)
 	//если получили ошибку
