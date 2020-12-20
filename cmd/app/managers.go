@@ -122,7 +122,7 @@ func (s *Server) handleManagerChangeProducts(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	respondJSON(w, product)
+	
 }
 
 func (s *Server) handleManagerMakeSales(w http.ResponseWriter, r *http.Request) {
