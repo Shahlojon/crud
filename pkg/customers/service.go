@@ -1,6 +1,9 @@
 package customers
 
 import (
+	"encoding/hex"
+	"crypto/rand"
+	"golang.org/x/crypto/bcrypt"
 	"context"
 	"errors"
 	"log"
@@ -10,11 +13,13 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
-//ErrNotFound ...
+var ErrTokenNotFound = errors.New("token not found")
 var ErrNotFound = errors.New("item not found")
-
-//ErrInternal ...
 var ErrInternal = errors.New("internal error")
+var ErrNoSuchUser = errors.New("no such user")
+var ErrInvalidPassword = errors.New("invalid password")
+var ErrPhoneUsed = errors.New("phone alredy registered")
+var ErrTokenExpired = errors.New("token expired")
 
 //Service ..
 type Service struct {
@@ -34,6 +39,14 @@ type Customer struct {
 	Password string    `json:"password"`
 	Active   bool      `json:"active"`
 	Created  time.Time `json:"created"`
+}
+
+//Product ...
+type Product struct {
+	ID    int64  `json:"id"`
+	Name  string `json:"name"`
+	Price int    `json:"price"`
+	Qty   int    `json:"qty"`
 }
 
 //All ....
@@ -214,4 +227,91 @@ func (s *Service) Save(ctx context.Context, customer *Customer) (c *Customer, er
 	}
 	return item, nil
 
+}
+
+//Token .... метод для генерации токена
+func (s *Service) Token(ctx context.Context, phone, password string) (string, error) {
+
+	//обявляем переменную хеш и парол
+	var hash string
+	var id int64
+	//выполняем запрос и извелекаем ид и хеш пароля
+	err := s.db.QueryRow(ctx, "select id, password from customers where phone = $1", phone).Scan(&id, &hash)
+	//если ничего не получили вернем ErrNoSuchUser
+	if err == pgx.ErrNoRows {
+		return "", ErrNoSuchUser
+	}
+	//если другая ошибка то вернем ErrInternal
+	if err != nil {
+		return "", ErrInternal
+	}
+	//проверим хеш с представленным паролем
+	err = bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	if err != nil {
+		return "", ErrInvalidPassword
+	}
+
+	//генерируем токен
+	buffer := make([]byte, 256)
+	n, err := rand.Read(buffer)
+	if n != len(buffer) || err != nil {
+		return "", ErrInternal
+	}
+
+	token := hex.EncodeToString(buffer)
+	_, err = s.db.Exec(ctx, "insert into customers_tokens(token, customer_id) values($1, $2)", token, id)
+	if err != nil {
+		return "", ErrInternal
+	}
+
+	return token, nil
+
+}
+
+//Products ...
+func (s *Service) Products(ctx context.Context) ([]*Product, error) {
+
+	items := make([]*Product, 0)
+
+	sqlStatement := `select id, name, price, qty from products where active = true order by id limit 500`
+	rows, err := s.db.Query(ctx, sqlStatement)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return items, nil
+		}
+		return nil, ErrInternal
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		item := &Product{}
+		err = rows.Scan(&item.ID, &item.Name, &item.Price, &item.Qty)
+		if err != nil {
+			log.Print(err)
+			return nil, err
+		}
+		items = append(items, item)
+	}
+
+	return items, nil
+}
+
+//IDByToken ....
+func (s *Service) IDByToken(ctx context.Context, token string) (int64, error) {
+	var id int64
+	sqlStatement := `select customer_id from customers_tokens where token = $1`
+	err := s.db.QueryRow(ctx, sqlStatement, token).Scan(&id)
+
+	if err != nil {
+
+		if err == pgx.ErrNoRows {
+			return 0, nil
+		}
+
+		return 0, ErrInternal
+	}
+
+	return id, nil
 }
