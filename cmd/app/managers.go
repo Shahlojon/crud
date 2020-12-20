@@ -137,7 +137,24 @@ func (s *Server) handleManagerMakeSales(w http.ResponseWriter, r *http.Request) 
 		errorWriter(w, http.StatusForbidden, err)
 		return
 	}
-	
+	sale := &managers.Sale{}
+	sale.ManagerID = id
+	err = json.NewDecoder(r.Body).Decode(&sale)
+
+	if err != nil {
+		//вызываем фукцию для ответа с ошибкой
+		errorWriter(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	sale, err = s.managerSvc.MakeSale(r.Context(), sale)
+	if err != nil {
+		//вызываем фукцию для ответа с ошибкой
+		errorWriter(w, http.StatusBadRequest, err)
+		return
+	}
+
+	respondJSON(w, sale)
 
 }
 
